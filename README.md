@@ -25,7 +25,7 @@ A tiny VoIP IVR framework by hackers and for hackers.
 - Python 3.8 or higher (3.10 recommended)
 - pyVoIP 1.6.4, patched according to [this comment](https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926) (also available in a `.whl` file in this repo)
 - NumPy (mandatory, required for DTMF detection)
-- eSpeakNG and SoX(optional but required for the default TTS engine configuration)
+- eSpeakNG and SoX (optional but required for the default TTS engine configuration)
 
 ### Usage
 
@@ -53,7 +53,7 @@ Note that the `/path/to/configdir` must be absolute. Use `$(pwd)` command to get
 
 ### Running from Docker Compose
 
-Add this to your `compose.yaml`, replacing `$PWD/example-config` with your configuration direcory path:
+Add this to your `compose.yaml`, replacing `$PWD/example-config` with your configuration directory path:
 
 ```yaml
 services:
