@@ -1,0 +1,46 @@
+---
+# SIP client configuration for incoming calls
+sip:
+  host: sip.example.com
+  port: 5060
+  transport: udp # not used for now, UDP is the only option
+  username: 'exampleuser'
+  password: 'examplepass123'
+  rtpPortLow: 10000
+  rtpPortHigh: 20000
+
+# TTS engine configuration
+tts:
+  voice: 'us-mbrola-2'
+  rate: 130 # words per minute
+  volume: 70 # from 0 to 200
+  pitch: 60
+  cmd: # command templates, do not modify them unless you're fully changing the engine
+    synth: 'espeak -v %s -a %d -p %d -s %d -w %s "%s"' # parameter order: voice, volume, pitch, rate, filename, text
+    transcode: 'sox %s -r 8000 -b 8 -c 1 -D %s' # parameter order: inputfile, outputfile
+  phrases: # key is the clip name, value is the text
+    passprompt: 'Please enter your pin followed by pound after the beep.'
+    cmd: 'Please enter your command, ending with pound.'
+    invalidpass: 'Invalid pin, bye!'
+    nocmd: 'Command not found.'
+
+# static audio clips configuration
+clips:
+  dir: './clips'
+  files: # in addition to the ones generated from phrases
+    beep: 'beep.wav'
+
+# IVR configuration
+ivr:
+  auth: true # set to false to disable user PINs and go straight to actions (not recommended)
+  authpromptclips: [passprompt, beep] # sequence of authentication prompt audio clips
+  authfailclips: [invalidpass]
+  cmdfailclips: [nocmd]
+  cmdpromptclips: [cmd]
+  users: # user PINs and supported actions, '*' means all
+    '3105': '*'
+    '3246': ['32']
+  actions: # all registered actions: command => script filename
+    '32': './actions/echobeep.py'
+    '22': './actions/echobeep.py'
+    '24': './actions/echobeep.py'
