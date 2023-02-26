@@ -25,6 +25,8 @@ def run_action(action_id, params, call_obj, user_id, config, clips, calls):
             if digit == '#':
                 playbuf(tts_to_buf('Echo test ended', config['tts']), call_obj)
                 return
+            elif digit in clips['dtmf']:
+                playbuf(clips['dtmf'][digit], call_obj)
     elif action_id == '24': # Caller ID readback: enter 24#
         playbuf(tts_to_buf('Your caller ID is %s' % get_caller_addr(call_obj), config['tts']), call_obj) # demonstration of the on-the-fly TTS
     else: # beep command: 22*3# tells to beep 3 times

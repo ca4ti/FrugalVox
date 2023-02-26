@@ -6,7 +6,7 @@ A tiny VoIP IVR framework by hackers and for hackers.
 
 - Small and nimble: the kernel is a single Python 3 file (~250 SLOC), and the configuration is a single YAML file
 - Hackable: the kernel is well-commented and not so big, all the actions are full-featured Python scripts
-- Written with plain telephony in mind, supporting both out-of-band and in-band DTMF command detection
+- Written with plain telephony in mind, supporting both out-of-band and in-band DTMF command detection, as well as DTMF audio clip generation
 - Comes with PIN-based authentication and action access control out of the box (optional but recommended)
 - Comes with TTS integration out of the box, configured for eSpeakNG by default (optional)
 - Container-ready
@@ -23,9 +23,12 @@ A tiny VoIP IVR framework by hackers and for hackers.
 ### Dependencies 
 
 - Python 3.8 or higher (3.10 recommended)
-- pyVoIP 1.6.4, patched according to [this comment](https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926) (also available in a `.whl` file in this repo)
+- pyVoIP 1.6.4, patched according to [this comment](https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926) (also available as a `.whl` file in this repo)
 - NumPy (mandatory, required for DTMF detection)
-- eSpeakNG and SoX (optional but required for the default TTS engine configuration)
+- SoX (mandatory, required for DTMF generation and TTS transcoding functionality)
+- eSpeakNG (optional but used by the default TTS engine configuration)
+
+For Python-side dependencies, just run `pip install -r requirements.txt` from the project directory. SoX and eSpeakNG (or other TTS engine of your choice, see the FAQ section) must be installed separately with your host OS package manager.
 
 ### Usage
 
@@ -127,6 +130,8 @@ This section determines which static audio clips are to be loaded into memory in
 
 Both fields are required to fill, but if you're not planning on using any static audio, just set `clips.dir` value to `'.'` and `clips.files` to `{}`.
 
+When naming the clips, a single limitation holds: a clip must not be named `dtmf`. Because when the reference is passed to action scripts, the `clips.dtmf` object will hold the audio clips generated for all 16 DTMF digits.
+
 ### IVR configuration: `ivr`
 
 This section lets you set up PIN-based authentication, access control and, most importantly, IVR actions themselves and the scripts that implement them.
@@ -164,12 +169,12 @@ where:
 - `call_obj` is an instance of `pyVoIP.VoIP.VoIPCall` class passed from the main FrugalVox call processing loop,
 - `user_id` is the ID (PIN) string of the user running the action (if authentication is turned off, it's always `0000`),
 - `config` is the dictionary containing the entire FrugalVox configuration object (as specified in the YAML),
-- `clips` is the object containing all in-memory audio clips (in the unsigned 8-bit 8KHz PCM format) ready to be fed into the `write_audio` method of the `call_obj`,
+- `clips` is the object containing all in-memory audio clips (in the unsigned 8-bit 8KHz PCM format) ready to be fed into the `write_audio` method of the `call_obj` (with `clips['dtmf']` being a dictionary with the pre-rendered DTMF digits),
 - `calls` is a dictionary with all currently active calls on the instance (keyed with the `call_obj.call_id` value).
 
 _Protip:_ if we use `*` as parameter separator and `#` as command terminator, why are `action_id`, `user_id` and all the action parameters still treated as strings as opposed to numbers? Because `A`, `B`, `C` and `D` still are valid DTMF digits and can be legitimately used in the actions or their parameters. Of course, if you target normal phone users, you should avoid using the "extended" digits, but there still is a possibility to do so. If you need to treat your action parameters or any IDs as numbers only, please do this yourself in your action script code.
 
-The action script may import any other Python modules at your disposal, including the main `fvx.py` kernel to use its helper methods, and all the modules available in the configuration file directory (in case it differs from the default one). An example action script that implements three demonstration actions, `32` for echo test, `24` for caller ID readback and `22*[times]` for beep, is shipped in this repo at `actions/echobeep.py`.
+The action script may import any other Python modules at your disposal, including the main `fvx.py` kernel to use its helper methods, and all the modules available in the configuration file directory (in case it differs from the default one). An example action script that implements three demonstration actions, `32` for echo test, `24` for caller ID readback and `22*[times]` for beep, is shipped in this repo at `example-config/actions/echobeep.py`.
 
 ### Useful methods, variables and objects exposed by the `fvx` kernel module
 
@@ -178,7 +183,7 @@ The action script may import any other Python modules at your disposal, includin
 - `fvx.logevent(msg)`: a drop-in replacement for Python's `print` function that outputs a formatted log message with the timestamp
 - `fvx.audio_buf_len`: the recommended length (in bytes) of a raw audio buffer to be sent to or received from the call object the action is operating on
 - `fvx.emptybuf`: a buffer of empty audio data, `fvx.audio_buf_len` bytes long
-- `fvx.detect_dtmf(buf)`: a method to detect a DTMF digit in the audio data buffer (see `actions/echobeep.py` for an example of how to use it correctly)
+- `fvx.detect_dtmf(buf)`: a method to detect a DTMF digit in the audio data buffer (see `example-config/actions/echobeep.py` for an example of how to use it correctly)
 - `fvx.tts_to_buf(text, ttsconfig)`: a method to directly render your text into an audio data buffer (pass `config['tts']` as the second parameter if you don't want to change anything in the TTS settings)
 - `fvx.tts_to_file(text, filename, ttsconfig)`: same as `fvx.tts_to_buf` method but writes the result to a WAV PCM file
 - `fvx.get_caller_addr(call_obj)`: a method to extract the caller's SIP address from a `VoIPCall` object (e.g. the one passed to the action)

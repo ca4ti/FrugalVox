@@ -51,6 +51,7 @@ DTMF_TABLE = {
     '#': [1477, 941],
     'D': [1633, 941]
 }
+DTMF_GEN_CMD = 'sox -n -D -b 8 -r 8000 %s synth 0.2 sin %s sin %s remix - gain -0.1' # command template to generate DTMF tone clips (order: file, f1, f2)
 ivrconfig = None # placeholder for IVR auth config
 calls = {} # placeholder for all realtime call instances
 
@@ -92,6 +93,14 @@ def tts_to_buf(text, conf): # render the text directly to a buffer
     tts_to_file(text, fname, conf)
     buf = load_audio(fname)
     os.remove(fname)
+    return buf
+
+def gen_dtmf(f1, f2): # render two sine frequencies to a file
+    fh, tname = tempfile.mkstemp('.wav', 'fvx-')
+    os.close(fh)
+    os.system(DTMF_GEN_CMD % (tname, f1, f2))
+    buf = load_audio(tname)
+    os.remove(tname)
     return buf
 
 def get_caller_addr(call): # extract caller's SIP address from the call request headers
@@ -254,12 +263,17 @@ if __name__ == '__main__':
     ivrconfig = config['ivr']
     logevent('Configuration loaded from %s' % configfile)
     clipDir = os.path.realpath(os.path.join(configroot, config['clips']['dir']))
-    logevent('Loading clips and compiling TTS phrases')
+    logevent('Loading static audio clips')
     clips = config['clips']['files']
     for k, fname in clips.items():
         clips[k] = load_audio(os.path.join(clipDir, fname))
+    logevent('Rendering TTS phrases')
     for pname, phrase in config['tts']['phrases'].items():
         clips[pname] = tts_to_buf(phrase, config['tts'])
+    logevent('Rendering DTMF clips')
+    clips['dtmf'] = {}
+    for digit, fpair in DTMF_TABLE.items():
+        clips['dtmf'][digit] = gen_dtmf(fpair[0], fpair[1])
     logevent('All clips loaded to memory buffers from %s' % clipDir)
     logevent('Initializing SIP phone part')
     sip = config['sip']
