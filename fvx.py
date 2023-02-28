@@ -2,7 +2,7 @@
 
 # FrugalVox: experimental, straightforward, no-nonsense IVR framework on top of pyVoIP (patched) and TTS engines
 # Created by Luxferre in 2023, released into public domain
-# Deps: PyYAML, NumPy, espeak-ng/flite/libttspico, SoX, patched pyVoIP (see https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926)
+# Deps: PyYAML, NumPy, espeak-ng/flite/libttspico, patched pyVoIP (see https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926)
 # All configuration is in config.yaml
 
 import sys
@@ -10,17 +10,17 @@ import os
 import signal
 import tempfile
 import yaml
-import wave
+import wave, audioop
 import time
 from datetime import datetime # for logging
 import traceback # for logging
 import socket # for local IP detection
-import numpy as np # for in-band DTMF detection
+import numpy as np # for in-band DTMF detection and generation
 import importlib.util # for action modules import
 from pyVoIP.VoIP import VoIPPhone, InvalidStateError, CallState
 
 # global parameters
-progname = 'FrugalVox v0.0.1'
+progname = 'FrugalVox v0.0.2'
 config = {} # placeholder for config object
 configfile = './config.yaml' # default config yaml path (relative to the workdir)
 if len(sys.argv) > 1:
@@ -51,7 +51,6 @@ DTMF_TABLE = {
     '#': [1477, 941],
     'D': [1633, 941]
 }
-DTMF_GEN_CMD = 'sox -n -D -b 8 -r 8000 %s synth 0.2 sin %s sin %s remix - gain -0.1' # command template to generate DTMF tone clips (order: file, f1, f2)
 ivrconfig = None # placeholder for IVR auth config
 calls = {} # placeholder for all realtime call instances
 
@@ -61,11 +60,36 @@ def logevent(msg):
     dts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print('[%s] %s' % (dts, msg))
 
-def load_audio(fname): # load audio data from a WAV PCM file
+def load_audio(fname): # load audio data from a WAV PCM file, resampling it if necessary
     f = wave.open(fname, 'rb')
-    frames = f.getnframes()
+    outrate = 8000
+    aparams = f.getparams()
+    frames = aparams.nframes
+    channels = aparams.nchannels
+    inrate = aparams.framerate
+    swidth = aparams.sampwidth
     data = f.readframes(frames)
     f.close()
+    if channels > 1: # convert to mono
+        data = audioop.tomono(data, swidth, 0.5, 0.5)
+    if inrate > outrate or swidth > 1: # convert the sample rate and bit width at the same time
+        rfactor = int(inrate / outrate) * swidth # only multiples of 8 KHz are supported
+        out = bytearray()
+        blen = len(data)
+        bwidth = swidth << 3 # incoming bit width
+        bfactor = 1 << (bwidth - 8) # factor to divide the biased sample value by to get a single byte
+        for i in range(0, blen, swidth): # only add every `rfactor`th frame
+            if (i % rfactor) == 0:
+                if swidth == 1:
+                    bval = data[i]
+                else:
+                    bval = int.from_bytes(bytes(data[i:i+swidth]), byteorder='little', signed=True)
+                if bfactor > 1: # perform bit reduction if necessary
+                    bval = int(round(bval / bfactor)) + 128
+                if bval > 255: # handle clipping
+                    bval = 255
+                out.append(bval)
+        data = bytes(out)
     return data
 
 def load_yaml(fname): # load an object from a YAML file
@@ -75,17 +99,8 @@ def load_yaml(fname): # load an object from a YAML file
     return yaml.safe_load(yc)
 
 def tts_to_file(text, fname, conf): # render the text to a file
-    fh, tname = tempfile.mkstemp('.wav', 'fvx-')
-    os.close(fh)
-    rate = int(conf['rate'])
-    volume = int(conf['volume'])
-    pitch = int(conf['pitch'])
-    ecmd = conf['cmd']['synth'] % (conf['voice'], volume, pitch, rate, tname, text)
+    ecmd = conf['cmd'] % (fname, text)
     os.system(ecmd) # render to the temporary file
-    # now, resample the synthesized file to Unsigned 8-bit 8Khz mono PCM
-    smpcmd = conf['cmd']['transcode'] % (tname, fname)
-    os.system(smpcmd)
-    os.remove(tname)
 
 def tts_to_buf(text, conf): # render the text directly to a buffer
     fh, fname = tempfile.mkstemp('.wav', 'fvx-')
@@ -95,13 +110,9 @@ def tts_to_buf(text, conf): # render the text directly to a buffer
     os.remove(fname)
     return buf
 
-def gen_dtmf(f1, f2): # render two sine frequencies to a file
-    fh, tname = tempfile.mkstemp('.wav', 'fvx-')
-    os.close(fh)
-    os.system(DTMF_GEN_CMD % (tname, f1, f2))
-    buf = load_audio(tname)
-    os.remove(tname)
-    return buf
+def gen_dtmf(f1, f2): # directly render two sine frequencies to a buffer (0.2 s duration and 8KHz sample rate hardcoded)
+    nbuf = np.arange(0, 0.2, 1 / 8000) # init target signal buffer and then sum the sine signals
+    return (127 + 61.44 * (np.sin(2 * np.pi * f1 * nbuf) + np.sin(2 * np.pi * f2 * nbuf))).astype(np.ubyte).tobytes()
 
 def get_caller_addr(call): # extract caller's SIP address from the call request headers
     return call.request.headers['From']['address']

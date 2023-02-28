@@ -11,13 +11,7 @@ sip:
 
 # TTS engine configuration
 tts:
-  voice: 'us-mbrola-2'
-  rate: 130 # words per minute
-  volume: 70 # from 0 to 200
-  pitch: 60
-  cmd: # command templates, do not modify them unless you're fully changing the engine
-    synth: 'espeak -v %s -a %d -p %d -s %d -w %s "%s"' # parameter order: voice, volume, pitch, rate, filename, text
-    transcode: 'sox %s -r 8000 -b 8 -c 1 -D %s' # parameter order: inputfile, outputfile
+  cmd: 'espeak -v us-mbrola-2 -a 70 -p 60 -s 130 -w %s "%s"' # parameter order: filename, text
   phrases: # key is the clip name, value is the text
     passprompt: 'Please enter your pin followed by pound after the beep.'
     cmd: 'Please enter your command, ending with pound.'

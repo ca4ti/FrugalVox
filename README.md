@@ -24,11 +24,10 @@ A tiny VoIP IVR framework by hackers and for hackers.
 
 - Python 3.8 or higher (3.10 recommended)
 - pyVoIP 1.6.4, patched according to [this comment](https://github.com/tayler6000/pyVoIP/issues/107#issuecomment-1440231926) (also available as a `.whl` file in this repo)
-- NumPy (mandatory, required for DTMF detection)
-- SoX (mandatory, required for DTMF generation and TTS transcoding functionality)
+- NumPy (mandatory, required for DTMF detection and generation)
 - eSpeakNG (optional but used by the default TTS engine configuration)
 
-For Python-side dependencies, just run `pip install -r requirements.txt` from the project directory. SoX and eSpeakNG (or other TTS engine of your choice, see the FAQ section) must be installed separately with your host OS package manager.
+For Python-side dependencies, just run `pip install -r requirements.txt` from the project directory. eSpeakNG (or other TTS engine of your choice, see the FAQ section) must be installed separately with your host OS package manager.
 
 ### Usage
 
@@ -38,7 +37,7 @@ Make sure your `python` command is pointing to Python 3.8 or higher.
 
 ## Running FrugalVox in Docker
 
-The Docker image encapsulates all the dependencies (including Python 3.10, three different TTS engines (see the FAQ section), SoX and the patched pyVoIP package) but requires you to provide all the configuration and action scripts in a volume mounted from the host. In addition to this, the configuration file itself must be called `config.yaml` since the container is only going to be looking for this name.
+The Docker image encapsulates all the dependencies (including Python 3.10, three different TTS engines (see the FAQ section) and the patched pyVoIP package) but requires you to provide all the configuration and action scripts in a volume mounted from the host. In addition to this, the configuration file itself must be called `config.yaml` since the container is only going to be looking for this name.
 
 ### Building
 
@@ -114,11 +113,7 @@ All the fields in this section, except `transport`, are currently mandatory. If 
 
 This section allows you to configure your TTS engine, for FrugalVox to be able to generate audio clips from your text. The fields are:
 
-- `tts.voice`: the name of the voice supported by your TTS engine (eSpeakNG by default)
-- `tts.rate`: words per minute speech rate of the voice
-- `tts.volume`: voice volume (0 to 200 for eSpeakNG)
-- `tts.pitch`: voice pitch (check with your TTS program which one is optimal for you, 60 is the default in the example config)
-- `tts.cmd`: a dictionary with the TTS synth and transcoder command templates, please just leave the default values there unless you want to switch to a different TTS engine other than eSpeakNG or a different encoder other than SoX
+- `tts.cmd`: the TTS synth command template, please just leave the default values there unless you want to switch to a different TTS engine other than eSpeakNG
 - `tts.phrases`: a dictionary where every key is the clip name and the value is the phrase text to be rendered to that clip on the kernel start
 
 ### Static audio clips list: `clips`
@@ -179,7 +174,7 @@ The action script may import any other Python modules at your disposal, includin
 ### Useful methods, variables and objects exposed by the `fvx` kernel module
 
 - `fvx.load_yaml(filename)`: a wrapper method to read a YAML file contents into a Python variable (useful if your action scripts have their own configuration files)
-- `fvx.load_audio(filename)`: a method to read a WAV PCM file into the audio buffer in memory (note that it must be unsigned 8-bit 8Khz in order to work with pyVoIP calls)
+- `fvx.load_audio(filename)`: a method to read a WAV PCM file into the audio buffer in memory, automatically resampling it if necessary
 - `fvx.logevent(msg)`: a drop-in replacement for Python's `print` function that outputs a formatted log message with the timestamp
 - `fvx.audio_buf_len`: the recommended length (in bytes) of a raw audio buffer to be sent to or received from the call object the action is operating on
 - `fvx.emptybuf`: a buffer of empty audio data, `fvx.audio_buf_len` bytes long
@@ -223,7 +218,7 @@ Because vanilla pyVoIP 1.6.4 has a bug its maintainers don't even seem to recogn
 
 **I understand the importance of eSpeakNG but it sounds terrible even with MBROLA. Which else open source TTS engines can you recommend to use with FrugalVox?**
 
-The first obvious choice would be ~~Festival~~ [Flite](https://github.com/festvox/flite). With an externally downloaded `.flitevox` voice, of course. It has a number of limitations: only English and Indic languages support, no way to adjust the volume, but the output quality is definitely a bit better. If you use the Docker image of FrugalVox, Flite is also included but you have to ship your own `.flitevox` files located somewhere inside your config directory. Also, current Flite versions already generate 16 KHz PCM files instead of 8 KHz, so the transcoder command still needs to be in place.
+The first obvious choice would be ~~Festival~~ [Flite](https://github.com/festvox/flite). With an externally downloaded `.flitevox` voice, of course. It has a number of limitations: only English and Indic languages support, no way to adjust the volume, but the output quality is definitely a bit better. If you use the Docker image of FrugalVox, Flite is also included but you have to ship your own `.flitevox` files located somewhere inside your config directory.
 
 The second obvious choice would be [Pico TTS](https://github.com/naggety/picotts) which is (or was) used as a built-in offline TTS engine in Android. It supports more European languages (besides two variants of English, there also are Spanish, German, French and Italian) but has a single voice per language and absolutely no parameters to configure. Also, it requires autotools to build but the process looks straightforward: `./autogen.sh && ./configure && make && sudo make install`. After this, we're interested in the `pico2wave` command. Please note that its current version has some bug retrieving the text from the command line, so we use an "echo to the pipe" approach. For your convenience, this engine also comes pre-installed in the FrugalVox Docker image.
 
@@ -239,13 +234,7 @@ eSpeakNG + MBROLA:
 
 ```yaml
 tts:
-  voice: 'us-mbrola-2'
-  rate: 130 # words per minute
-  volume: 70 # from 0 to 200
-  pitch: 60
-  cmd:
-    synth: 'espeak -v %s -a %d -p %d -s %d -w %s "%s"' # parameter order: voice, volume, pitch, rate, filename, text
-    transcode: 'sox %s -r 8000 -b 8 -c 1 -D %s' # parameter order: inputfile, outputfile
+  cmd: 'espeak -v us-mbrola-2 -a 70 -p 60 -s 130 -w %s "%s"' # parameter order: filename, text
   ...
 ```
 
@@ -253,13 +242,7 @@ Flite/Mimic 1:
 
 ```yaml
 tts:
-  voice: 'tts/mycroft_voice_4.0.flitevox'
-  rate: 1 # Flite uses a factor instead of absolute value
-  volume: 0 # Flite doesn't support volume adjustment
-  pitch: 100 # Flite uses slightly different pitch scale
-  cmd:
-    synth: 'flite -voice %s --setf vol=%d --setf int_f0_target_mean=%d --setf duration_stretch=%d -o %s -t "%s"' # parameter order: voice, volume, pitch, rate, filename, text
-    transcode: 'sox %s -r 8000 -b 8 -c 1 -D %s' # parameter order: inputfile, outputfile
+  cmd: 'flite -voice tts/mycroft_voice_4.0.flitevox --setf int_f0_target_mean=100 --setf duration_stretch=1 -o %s -t "%s"' # parameter order: filename, text
   ...
 ```
 
@@ -267,15 +250,14 @@ Pico TTS:
 
 ```yaml
 tts:
-  voice: 'en-US'
-  rate: 0 # Pico doesn't support it
-  volume: 0 # Pico doesn't support it
-  pitch: 0 # Pico doesn't support it
-  cmd:
-    synth: VOICE=%s UU=%d%d%d OUTF=%s sh -c 'echo "%s" | pico2wave -l $VOICE -w $OUTF' # parameter order: voice, volume, pitch, rate, filename, text
-    transcode: 'sox %s -r 8000 -b 8 -c 1 -D %s' # parameter order: inputfile, outputfile
+  cmd: OUTF=%s sh -c 'echo "%s" | pico2wave -l en-US -w $OUTF' # parameter order: filename, text
   ...
 ```
+
+## Version history
+
+- 0.0.2 (2023-02-28, current): fully got rid of SoX dependency, simplified TTS configuration
+- 0.0.1 (2023-02-26): initial release
 
 ## Credits
 
