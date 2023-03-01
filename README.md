@@ -4,7 +4,7 @@ A tiny VoIP IVR framework by hackers and for hackers.
 
 ## Features
 
-- Small and nimble: the kernel is a single Python 3 file (~250 SLOC), and the configuration is a single YAML file
+- Small and nimble: the kernel is a single Python 3 file (~270 SLOC), and the configuration is a single YAML file
 - Hackable: the kernel is well-commented and not so big, all the actions are full-featured Python scripts
 - Written with plain telephony in mind, supporting both out-of-band and in-band DTMF command detection, as well as DTMF audio clip generation
 - Comes with PIN-based authentication and action access control out of the box (optional but recommended)
@@ -42,6 +42,8 @@ The Docker image encapsulates all the dependencies (including Python 3.10, three
 ### Building
 
 From the source directory, run: `docker build -t frugalvox .` and the image called `frugalvox` will be built.
+
+Alternatively, you can build the "slim" version of the image based on Alpine Linux, which will only contain the Pico TTS engine. For `x86_64` architecture, such an image will only weigh around 180 MiB. Do this using this command: `docker build -t frugalvox:slim -f Dockerfile.slim .`
 
 ### Running from the command line
 
@@ -105,7 +107,7 @@ This section lets you configure which SIP server FrugalVox will connect to in or
 - `sip.transport`: optional, not used for now, added here for the forward compatibility with future versions (the only supported transport is now `udp`)
 - `sip.username`: your SIP account auth username (only the username itself, no domain or URI parts)
 - `sip.password`: your SIP account auth password
-- `sip.rtpPortLow` and `sip.rtpPortHigh`: your UDP port range for RTP communication, must match the port range opened in Docker if using the image, usually the default of 10000 and 20000 is fine
+- `sip.rtpPortLow` and `sip.rtpPortHigh`: your UDP port range for RTP communication, usually the default of 10000 and 20000 is fine
 
 All the fields in this section, except `transport`, are currently mandatory. If unsure about `rtpPortLow` and `rtpPortHigh`, just leave the values provided in the example config.
 
@@ -198,7 +200,7 @@ Initially, FrugalVox was created to answer a simple question: "given a VoIP prov
 
 Nothing wrong at the first glance, but... Asterisk's code base was, as of November 2016, as large as 1139039 SLOC. If you don't see a problem with that, I envy your innocence. Anyway, I doubt that any of those would be able to comfortably run on that cheap VPS or on my Orange Pi with 256 MB RAM. For my goals, it would be like hunting sparrows with ballistic missiles.
 
-FrugalVox kernel, on the other hand, is around 250 SLOC in 2023. Despite being written in Python, it is really frugal in terms of resource consumption, both while running and while writing and debugging its code. Yet, thanks to full exposure of the action scripts to the Python runtime, it can be as flexible as you want it to be. Not to mention that such a small piece of code is much easier to audit and discover and promptly mitigate any subtle errors or security vulnerabilities.
+FrugalVox kernel, on the other hand, is around 270 SLOC in 2023. Despite being written in Python, it is really frugal in terms of resource consumption, both while running and while writing and debugging its code. Yet, thanks to full exposure of the action scripts to the Python runtime, it can be as flexible as you want it to be. Not to mention that such a small piece of code is much easier to audit and discover and promptly mitigate any subtle errors or security vulnerabilities.
 
 **So, is it a PBX or just a scriptable IVR system?**
 
@@ -222,11 +224,13 @@ The first obvious choice would be ~~Festival~~ [Flite](https://github.com/festvo
 
 The second obvious choice would be [Pico TTS](https://github.com/naggety/picotts) which is (or was) used as a built-in offline TTS engine in Android. It supports more European languages (besides two variants of English, there also are Spanish, German, French and Italian) but has a single voice per language and absolutely no parameters to configure. Also, it requires autotools to build but the process looks straightforward: `./autogen.sh && ./configure && make && sudo make install`. After this, we're interested in the `pico2wave` command. Please note that its current version has some bug retrieving the text from the command line, so we use an "echo to the pipe" approach. For your convenience, this engine also comes pre-installed in the FrugalVox Docker image.
 
-The third (not so obvious) choice **might** be [Mimic 1](https://github.com/MycroftAI/mimic1) which is basically Flite on steroids. That's why, unlike Mimic 2 and 3, it still is pretty lightweight and suitable for our IVR purposes. It supports all the `.flitevox` voice files as well as the `.htsvoice` format. However, there is a "small" issue: currently, Mimic 1 still only supports sideloading `.flitevox` and not `.htsvoice` files by specifying the arbitrary path into the `-voice` option, all HTS voices must be either compiled in or put into the `$prefix/share/mimic/voices` (where `$prefix` usually is `/usr` or `/usr/local`) or the current working directory, and then referenced in the `-voice` option without the `.htsvoice` suffix. For me, this inconsistency kinda rules Mimic 1 out of the recommended options. The [Mycroft 4.0](https://github.com/MycroftAI/mimic1/blob/development/voices/mycroft_voice_4.0.flitevox) voice though, which is shipped in the same Mimic 1 repo, still can be used with the vanilla Flite with no issues. 
+The third (not so obvious) choice **might** be [Mimic 1](https://github.com/MycroftAI/mimic1) which is basically Flite on steroids. That's why, unlike Mimic 2 and 3, it still is pretty lightweight and suitable for our IVR purposes. It supports all the `.flitevox` voice files as well as the `.htsvoice` format. However, there is a "small" issue: currently, Mimic 1 still only supports sideloading `.flitevox` and not `.htsvoice` files by specifying the arbitrary path into the `-voice` option, all HTS voices must be either compiled in or put into the `$prefix/share/mimic/voices` (where `$prefix` usually is `/usr` or `/usr/local`) or the current working directory, and then referenced in the `-voice` option without the `.htsvoice` suffix. For me, this inconsistency kinda rules Mimic 1 out of the recommended options.
 
 Another approach to the same problem would be to build the HTS Engine API and then a version of Flite 2.0 with its support, both sources taken from [this project page](https://hts-engine.sourceforge.net/). The build process is not so straightforward but you should be left with a `flite_hts_engine` binary with a set of command line options totally different from the usual Flite or Mimic 1. If you understand how FrugalVox is configured to use Pico TTS, then you'll have no issues configuring it for `flite_hts_engine`. The voice output quality is debatable compared to the usual `.flitevox` packages, so I wouldn't include this into my recommended list either.
 
 Alas, that looks like it. The great triad of lightweight and FOSS TTS engines consists of eSpeakNG, Flite with variations and Pico TTS. All other engines, not counting the online APIs, are too heavy to fit into the scenario. Of course, nothing prevents you from integrating them as well if you have enough resources. In that case, I'd recommend [Mimic 3](https://github.com/MycroftAI/mimic3) but that definitely is out of this FAQ's scope.
+
+Note that for both Flite and Mimic 1 the output voice must support a sample rate that is divisible by 8000 Hz in order to sound correctly. Since version 0.0.2, FrugalVox uses an internal resampler that has this limitation. A way to mitigate this in the future versions is being investigated.
 
 To recap, here are all the example TTS configurations for all the reviewed engines:
 
@@ -242,7 +246,7 @@ Flite/Mimic 1:
 
 ```yaml
 tts:
-  cmd: 'flite -voice tts/mycroft_voice_4.0.flitevox --setf int_f0_target_mean=100 --setf duration_stretch=1 -o %s -t "%s"' # parameter order: filename, text
+  cmd: 'flite -voice tts/cmu_us_rms.flitevox --setf int_f0_target_mean=100 --setf duration_stretch=1 -o %s -t "%s"' # parameter order: filename, text
   ...
 ```
 

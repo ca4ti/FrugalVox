@@ -1,0 +1,23 @@
+FROM alpine:latest AS builder
+RUN apk update && apk add --no-cache build-base git automake autoconf libtool popt-dev
+WORKDIR /opt/src
+RUN git clone https://github.com/naggety/picotts.git
+WORKDIR /opt/src/picotts/pico
+RUN ./autogen.sh && ./configure && make && make install
+RUN strip /usr/local/lib/libttspico.so.*
+RUN strip /usr/local/bin/pico2wave
+
+FROM python:3.10-alpine
+USER root
+WORKDIR /usr/src/app
+RUN apk update && apk add --no-cache py3-numpy py3-yaml popt
+ENV PYTHONPATH=/usr/lib/python3.10/site-packages
+COPY --from=builder /usr/local/lib/libttspico.so* /usr/local/lib/
+COPY --from=builder /usr/local/bin/pico2wave /usr/local/bin/
+COPY --from=builder /usr/local/share/pico/ /usr/local/share/pico/
+COPY pyVoIP-1.6.4.patched-py3-none-any.whl ./
+RUN pip install --no-cache-dir pyVoIP-1.6.4.patched-py3-none-any.whl
+COPY fvx.py ./
+VOLUME /opt/config
+WORKDIR /opt/config
+ENTRYPOINT ["python", "-u", "/usr/src/app/fvx.py", "/opt/config/config.yaml"]
